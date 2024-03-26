@@ -41,19 +41,18 @@ plot_size = 707
 # from_prev = 2016
 # to_prev = 2019
 
-args_all = list(park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
-args_4yr = list(park = park, from = from_4yr, to = to, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
+# args_all = list(park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
+# args_4yr = list(park = park, from = from_4yr, to = to, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
 
 #---- Plot event lists ----
-plotevs <- do.call(joinLocEvent, args_all)
+plotevs <- joinLocEvent(park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 plotevs_4yr <- plotevs %>% filter(between(Year, from_4yr, to))
-#plotevs_vs <- do.call(joinLocEvent, args_vs)
 
 
 #---- Table 1. Regen densities of native canopy species by plot and year ----
 reg <- joinRegenData(speciesType = 'native', canopyForm = 'canopy', units = 'ha',
-                     park=park, years=c(from:to), QAQC = F, retired = F, anrevisit = F)
+                     park=park, years=c(from:to), QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
 reg_cycle_table <- reg %>% group_by(Plot_Name, Cycle) %>% 
                            summarize(seed_den = round(sum(tot.seed.dens, na.rm = TRUE), 2),
@@ -78,14 +77,12 @@ write.csv(reg_cycle_wide,
 #---- Map 1 Regen of native canopy species by cycle ----
 reg_cycle <- reg %>% group_by(Plot_Name, Cycle) %>% 
                      summarize(regen.dens = sum(regen.dens, na.rm = TRUE), .groups = 'drop') %>% 
-                     left_join(plotevs %>% select(Plot_Name, X_Coord, Y_Coord, Cycle), ., 
+                     left_join(plotevs %>% select(Plot_Name, Plot_Number, X_Coord, Y_Coord, Cycle), ., 
                                by = c("Plot_Name", "Cycle")) %>% 
                      arrange(Plot_Name, Cycle) %>% 
                      pivot_wider(names_from = Cycle, values_from = regen.dens, 
                                  names_prefix = "Cycle_", values_fill = 0) %>% 
                      rename(X = X_Coord, Y = Y_Coord) #abbr for shapefile
-
-max(reg_cycle[,4:ncol(reg_cycle)])
 
 write_to_shp(reg_cycle, 
              shp_name = paste0(shppath, "Map_1_", park, "_regen_by_cycle_", to, ".shp" ))
@@ -98,7 +95,7 @@ reg_sz_cols <- c("seedht0.dens", "seedht1.dens", "seedht2.dens", "seedht3.dens",
 reg_size <- reg %>% select(Plot_Name, Year, all_of(reg_sz_cols))
 
 reg_size_4yr <- reg_size %>% filter(between(Year, from_4yr, to)) %>% 
-                             left_join(plotevs_4yr %>% select(Plot_Name, X_Coord, Y_Coord), ., by = 'Plot_Name') %>%
+                             left_join(plotevs_4yr %>% select(Plot_Name, Plot_Number, X_Coord, Y_Coord), ., by = 'Plot_Name') %>%
                              rename(X = X_Coord, Y = Y_Coord) %>% 
                              arrange (Plot_Name, Year)
 
@@ -274,14 +271,14 @@ ggsave(paste0(new_path, "figures/", "Figure_1B_", park, "_tree_dbh_dist_by_cycle
 spp_grps <- read.csv("ERMN_tree_species_groups.csv")
 
 reg_spp_all <- joinRegenSpData(speciesType = 'all', canopyForm = 'all',  units = 'ha',
-                               park = park, years = c(from_4yr:to), QAQC=FALSE, rejected=FALSE, anrevisit=FALSE)
+                               park = park, years = c(from_4yr:to), QAQC=QAQC, rejected=rejected, anrevisit=anrevisit)
 
 regen_spp_grps <- merge(reg_spp_all,spp_grps[,c("Latin_name","ERMNGroup")], by="Latin_name", all.x=T)
 
 regen_wide1 <- regen_spp_grps %>% group_by(Plot_Name, ERMNGroup) %>%
   summarize(grp_regen_dens = sum(regen.dens)) %>% unique(., by = "Plot_Name")
 
-regen_wide2 <- merge(regen_wide1,plotevs[,c("Plot_Name","X_Coord","Y_Coord")], by="Plot_Name", all.x=T) %>%
+regen_wide2 <- merge(regen_wide1,plotevs[,c("Plot_Name", "Plot_Number", "X_Coord","Y_Coord")], by="Plot_Name", all.x=T) %>%
   unique(., by = c("Plot_Name", "ERMNGroup")) %>% arrange(Plot_Name,ERMNGroup) %>% mutate (X = X_Coord, Y = Y_Coord)
 
 regen_wide <- regen_wide2 %>% pivot_wider(names_from = ERMNGroup, values_from = grp_regen_dens, values_fill = 0) %>% 
@@ -298,11 +295,11 @@ write_to_shp(regen_sp_final, shp_name = paste0(shppath, "Map_3_", park, "_regen_
 spp_grps <- read.csv("ERMN_tree_species_groups.csv")
 
 trees_4yr <- joinTreeData(status = 'live', speciesType = 'all', canopyPosition = 'all',
-                          park=park, years=c(from_4yr:to),QAQC=FALSE, rejected=FALSE, anrevisit=FALSE)
+                          park=park, years=c(from_4yr:to), QAQC=QAQC, rejected=rejected, anrevisit=anrevisit)
 
 trees_4yr_grps <- merge(trees_4yr,spp_grps[,c("Latin_name","ERMNGroup")], by="Latin_name", all.x=T)
 
-trees_wide1 <- trees_4yr_grps %>% group_by(Plot_Name, X_Coord, Y_Coord, ERMNGroup) %>%
+trees_wide1 <- trees_4yr_grps %>% group_by(Plot_Name, Plot_Number, X_Coord, Y_Coord, ERMNGroup) %>%
   summarize(BA_sum = sum(BA_cm2)) %>% mutate (X = X_Coord, Y = Y_Coord) 
 
 trees_wide <- trees_wide1 %>% pivot_wider(names_from = ERMNGroup, values_from = BA_sum, values_fill = 0) %>% 
@@ -315,102 +312,83 @@ trees_final <- merge(trees_wide, ba_plot_total, by = "Plot_Name", all.x=T) %>% s
 write_to_shp(trees_final, shp_name = paste0(shppath, "Map_4_", park, "_treeBA_by_spp_cycle", cycle_latest, ".shp"))
 
 
-
-###  START HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!! ###
-
 #---- Map 5 Regen stocking index ----
-reg_4yr <- do.call(joinRegenData,
-                   args = c(args_4yr, speciesType = 'native',
-                            canopyForm = 'canopy', units = 'sq.m'))
+reg_stock_4yr <- reg %>% select(Plot_Name, Year, ave.stock5u) %>% filter(between(Year, from_4yr, to)) %>% 
+  left_join(plotevs_4yr %>% select(Plot_Name, Plot_Number, X_Coord, Y_Coord), ., by = 'Plot_Name') %>%
+  rename(X = X_Coord, Y = Y_Coord) %>% 
+  arrange (Plot_Name, Year)
 
-reg_4yr_stock <- reg_4yr %>% group_by(Plot_Name) %>% 
-                             summarize(stock = sum(stock, na.rm = T)) %>% 
-                 left_join(plotevs %>% select(Plot_Name, X = xCoordinate, Y = yCoordinate) %>% unique(),
-                           ., by = "Plot_Name")
-
-write_to_shp(reg_4yr_stock, shp_name = 
-         paste0(new_path, "shapefiles/", park, "_stocking_index_cycle_",
-                cycle_latest, ".shp"))
+write_to_shp(reg_stock_4yr, shp_name = 
+         paste0(shppath, "Map_5_", park, "_stock_index_cycle_", cycle_latest, ".shp"))
 
 #---- Map 6 Deer Browse Index ----
-stand_4yr <- do.call(joinStandData, args_4yr) 
+stand_4yr <- joinStandData(park=park, years=c(from_4yr:to), QAQC=QAQC, rejected=rejected, anrevisit=anrevisit) %>% 
+  select(Plot_Name, Year, Browse_Index) 
 
-dbi <- left_join(plotevs_4yr %>% select(Plot_Name, X = xCoordinate, Y = yCoordinate),
+dbi <- left_join(plotevs_4yr %>% select(Plot_Name, Plot_Number, X = X_Coord, Y = Y_Coord),
                  stand_4yr, by = "Plot_Name") %>% 
-       select(Plot_Name, X, Y, DBI = Deer_Browse_Index)
+       select(Plot_Name, X, Y, DBI = Browse_Index)
 
-mean(dbi$DBI) #SAGA = 3.67 
+mean(dbi$DBI) #FRHI = 3.35 
 
 write_to_shp(dbi, shp_name = 
-         paste0(new_path, "shapefiles/", park, "_dbi_cycle_", cycle_latest, ".shp"))
+         paste0(shppath, "Map_6_", park, "_browse_index_cycle_", cycle_latest, ".shp"))
 
 
 #---- Map 7 Invasive % Cover by Cycle ----
-invcov <- do.call(joinQuadSpecies, args = c(args_all, speciesType = 'invasive')) %>% 
-  select(Plot_Name, cycle, ScientificName, quad_avg_cov) %>% 
-  group_by(Plot_Name, cycle) %>% summarize(quad_cov = sum(quad_avg_cov), .groups = 'drop') %>% 
-  left_join(plotevs %>% select(Plot_Name, X = xCoordinate, Y = yCoordinate, cycle),
-            ., by = c("Plot_Name", "cycle")) %>% 
-  mutate(quad_cov = replace_na(quad_cov, 0))
+invcov <- joinQuadData(speciesType = 'invasive', GrowthForm = 'all', 
+                       park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
-invcov_wide <- invcov %>% pivot_wider(names_from = cycle, values_from = quad_cov)
+invcov_wider <- invcov %>% select(Plot_Name, Plot_Number, Cycle, X=X_Coord, Y=Y_Coord, ave.q.cov) %>% 
+  pivot_wider(names_from = Cycle, names_prefix = "Cycle", values_from = ave.q.cov) 
 
-write_to_shp(invcov_wide, shp_name = 
-               paste0(new_path, "shapefiles/", park, "_inv_cover_by_cycle.shp"))
+write_to_shp(invcov_wider, shp_name = 
+               paste0(shppath, "Map_7_", park, "_invas_cover_cycle_", cycle_latest, ".shp"))
 
-allcov <- do.call(joinQuadSpecies, args = c(args_4yr, speciesType = 'all')) %>% 
-  select(Plot_Name, cycle, ScientificName, quad_avg_cov, Exotic)
-
-invspp <- prepTaxa() %>% select(ScientificName, InvasiveNETN)
-
-covsum <- left_join(allcov, invspp, by = "ScientificName") %>% 
-  filter(!(InvasiveNETN == FALSE & Exotic == TRUE)) %>% # native vs. invasive
-  group_by(Plot_Name, InvasiveNETN) %>% 
-  summarize(avgcov = sum(quad_avg_cov, na.rm = TRUE), .groups = 'drop') %>% 
-  group_by(InvasiveNETN) %>% summarize(avg_cov = sum(avgcov)/29)
 
 #---- Map 8 Invasive % Cover by Species ----
+# Lump some species in the same genus
+invspp_allobs <- joinQuadSpData(speciesType = 'invasive', GrowthForm = 'all', 
+                             park = "all", years=c(2008:to), QAQC = QAQC, retired = retired, anrevisit = anrevisit)
+
+invspp_all_unique <- invspp_allobs %>% select(Latin_name) %>% unique() %>% arrange(Latin_name)
+
 # Lump some species in the same genus
 invspp_4yr <- joinQuadSpecies(from = from_4yr, to = to, speciesType = 'invasive') %>% 
   select(ScientificName) %>% unique() %>% arrange(ScientificName)
 
+table(invspp_4yr$ScientificName)
+
 Ligustrum = c("Ligustrum", "Ligustrum obtusifolium", "Ligustrum vulgare")
-Lonicera = c("Lonicera - Exotic", "Lonicera morrowii", "Lonicera X bella")
+Lonicera = c("Lonicera - Exotic", "Lonicera morrowii", "Lonicera X bella", "Lonicera", 
+             "Lonicera maackii")
 Vincetoxicum = c("Vincetoxicum", "Vincetoxicum hirundinaria", "Vincetoxicum nigrum",
                  "Vincetoxicum rossicum")
+Elaeagnus = c("Elaeagnus", "Elaeagnus angustifolia", "Elaeagnus umbellata")
+Euonymus = c("Euonymus", "Euonymus alatus", "Euonymus atropurpureus")
+Centaurea = c("Centaurea", "Centaurea jacea", "Centaurea stoebe")
 
-#sort(unique(invspp_4yr$ScientificName))
-
-invspp1 <- do.call(joinQuadSpecies, 
-                   #args = list(from = 2017, to = 2022, speciesType = 'invasive')) %>% 
-                   args = c(args_4yr, speciesType = 'invasive')) %>% 
-  select(Plot_Name, ScientificName, quad_avg_cov) %>% 
-  left_join(plotevs_4yr %>% select(Plot_Name), ., by = "Plot_Name") %>% 
-  mutate(quad_avg_cov = replace_na(quad_avg_cov, 0),
-         present = ifelse(quad_avg_cov > 0, 1, 0),
-         ScientificName = case_when(
-           ScientificName %in% Ligustrum ~ "Ligustrum",
-           ScientificName %in% Lonicera ~ "Lonicera - Exotic",
-           ScientificName %in% Vincetoxicum ~ "Vincetoxicum",
-           TRUE ~ ScientificName)) %>% 
-  arrange(Plot_Name, ScientificName)
 
 # Determine 12 most common invasives in a park by cover
-plotspp_df <- data.frame(expand.grid(unique(invspp1$Plot_Name), 
-                                     unique(invspp1$ScientificName), 
-                                     stringsAsFactors = FALSE)) %>% 
-  rename(Plot_Name = Var1, ScientificName = Var2) %>% 
-  filter(!is.na(ScientificName))
+invspp_4yr <- joinQuadSpData(speciesType = 'invasive', GrowthForm = 'all', 
+                             park = park, years=c(from_4yr:to), QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
-topspp <- invspp1 %>% left_join(plotspp_df, ., by = c('Plot_Name', 'ScientificName')) %>% 
-  arrange(Plot_Name, ScientificName) %>% 
-  mutate(quad_avg_cov = replace_na(quad_avg_cov, 0),
+invspp_4yr$present <- 1
+
+plotspp_df <- data.frame(expand.grid(unique(invspp_4yr$Plot_Name), 
+                                     unique(invspp_4yr$Latin_name), 
+                                     stringsAsFactors = FALSE)) %>% 
+  rename(Plot_Name = Var1, Latin_name = Var2) %>% 
+  filter(!is.na(Latin_name))
+
+topspp <- invspp_4yr %>% left_join(plotspp_df, ., by = c('Plot_Name', 'Latin_name')) %>% 
+  arrange(Plot_Name, Latin_name) %>% 
+  mutate(ave.q.cov = replace_na(ave.q.cov, 0),
          present = replace_na(present, 0)) %>% 
-  group_by(ScientificName) %>% 
-  summarize(avg_cov = mean(quad_avg_cov, na.rm = T),
+  group_by(Latin_name) %>% 
+  summarize(avg_cov = mean(ave.q.cov, na.rm = T),
             num_plots = sum(present), .groups = 'drop') %>% 
-  arrange(desc(num_plots)) %>% slice(1:10) %>% select(ScientificName) #MIMA only
-  #arrange(desc(avg_cov)) %>% slice(1:12) %>% select(ScientificName)
+  arrange(desc(avg_cov)) %>% slice(1:12) %>% select(Latin_name)
 
 # Prep for shapefile
 invspp <- invspp1 %>% 
@@ -441,7 +419,19 @@ invspp$totcov = rowSums(invspp[,4:ncol(invspp)])
 write_to_shp(invspp, shp_name = 
                paste0(new_path, "shapefiles/", park, "_inv_cover_by_species.shp"))
 
-#---- Map 9 Tree Pests/Diseases ----
+
+allcov <- do.call(joinQuadSpecies, args = c(args_4yr, speciesType = 'all')) %>% 
+  select(Plot_Name, cycle, ScientificName, quad_avg_cov, Exotic)
+
+invspp <- prepTaxa() %>% select(ScientificName, InvasiveNETN)
+
+covsum <- left_join(allcov, invspp, by = "ScientificName") %>% 
+  filter(!(InvasiveNETN == FALSE & Exotic == TRUE)) %>% # native vs. invasive
+  group_by(Plot_Name, InvasiveNETN) %>% 
+  summarize(avgcov = sum(quad_avg_cov, na.rm = TRUE), .groups = 'drop') %>% 
+  group_by(InvasiveNETN) %>% summarize(avg_cov = sum(avgcov)/29)
+
+#---- Map 9 Tree Pests/Diseases --- NOT YET NEEDS TO BE UPDATED FOR ERMN ----
 # First compile plot-level disturbances that may include priority pests/pathogens
 disturb <- do.call(joinStandDisturbance, args = args_4yr) %>% 
   filter(DisturbanceLabel != "None") %>% 
@@ -529,7 +519,7 @@ write_to_shp(pests_wide, shp_name =
                paste0(new_path, "shapefiles/", park, "_pest_detections_", cycle_latest, ".shp"))
 
 
-#---- Map 10 Canopy Cover ----
+#---- Map 10 Canopy Cover --- NOT YET NEEDS TO BE UPDATED FOR ERMN ----
 cancov <- do.call(joinStandData, args = args_all) %>% 
   select(Plot_Name, cycle, X = xCoordinate, Y = yCoordinate, CrownClos = Pct_Crown_Closure)
 
