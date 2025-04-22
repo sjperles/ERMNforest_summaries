@@ -12,20 +12,20 @@ write_to_shp <- function(data, x = "X", y = "Y", shp_name){
 
 #---- Eventually delete this whole section once source_script_ERMN is correct ----
 setwd('C:/ERMN Veg/Veg_Data_2022/ERMNforest_summaries')
-tablepath = 'C:/ERMN Veg/Veg_Data_2022/ERMNforest_summaries/draft_tables/'
-shppath = 'C:/ERMN Veg/Veg_Data_2022/ERMNforest_summaries/shapefiles/'
+tablepath = 'C:/ERMN Veg/Veg_Data_2022/ERMNforest_summaries/draft_tables/FONE/'
+shppath = 'C:/ERMN Veg/Veg_Data_2022/ERMNforest_summaries/shapefiles/FONE/'
 
-importData(type='DSN', odbc="ERMNVeg20231129a")
+importData(type='DSN', odbc="ERMNVeg20241211")
 
 
 # Set parameters
 park = 'FRHI'
-years = c(2007:2023)
+years = c(2007:2024)
 from = 2007
-from_4yr = 2018 # earliest year in the latest four year cycle (to - 4). If to = 2023, then from_4yr = 2018
-to = 2023
+from_4yr = 2019 # earliest year in the latest four year cycle (to - 4). If to = 2023, then from_4yr = 2018
+to = 2024
 QAQC = FALSE
-retired = FALSE
+retired = TRUE
 anrevisit = FALSE
 cycle_latest = 4
 park_crs = ifelse(park %in% c("DEWA"), 26918, 26917)
@@ -34,6 +34,7 @@ num_plots = case_when(park == "ALPO" ~ 23,
                       park == "DEWA" ~ 102,
                       park == "FONE" ~ 20,
                       park == "FRHI" ~ 20,
+                      park == "FLNI" ~ 12,
                       park == "GARI" ~ 43,
                       park == "JOFL" ~ 12,
                       park == "NERI" ~ 102)
@@ -305,12 +306,13 @@ trees_wide1 <- trees_4yr_grps %>% group_by(Plot_Name, Plot_Number, X_Coord, Y_Co
 trees_wide <- trees_wide1 %>% pivot_wider(names_from = ERMNGroup, values_from = BA_sum, values_fill = 0) %>% 
   arrange(Plot_Name)
 
-ba_plot_total <- trees_4yr_grps %>% group_by(Plot_Name) %>% summarise(plot.ba.total = sum(BA_cm2))
+ba_plot_total <- trees_4yr_grps %>% group_by(Plot_Name) %>% summarise(plot.ba.total = (sum(BA_cm2)/707))
+# This reports basal area in m2/ha. 
 
 trees_final <- merge(trees_wide, ba_plot_total, by = "Plot_Name", all.x=T) %>% select(-c("X_Coord", "Y_Coord"))
 
 write_to_shp(trees_final, shp_name = paste0(shppath, "Map_4_", park, "_treeBA_by_spp_cycle", cycle_latest, ".shp"))
-
+# This reports basal area in m2/ha.
 
 #---- Map 5 Regen stocking index ----
 reg_stock_4yr <- reg %>% select(Plot_Name, Year, ave.stock5u) %>% filter(between(Year, from_4yr, to)) %>% 
@@ -327,15 +329,34 @@ stand_4yr <- joinStandData(park=park, years=c(from_4yr:to), QAQC=QAQC, rejected=
 
 dbi <- left_join(plotevs_4yr %>% select(Plot_Name, Plot_Number, X = X_Coord, Y = Y_Coord),
                  stand_4yr, by = "Plot_Name") %>% 
-       select(Plot_Name, X, Y, DBI = Browse_Index)
+       select(Plot_Name, Plot_Number, X, Y, DBI = Browse_Index)
 
-mean(dbi$DBI) #FRHI = 3.35 
+mean(dbi$DBI) #FRHI = 3.45 
 
 write_to_shp(dbi, shp_name = 
          paste0(shppath, "Map_6_", park, "_browse_index_cycle_", cycle_latest, ".shp"))
 
 
-#---- Map 7 Invasive % Cover by Cycle ----
+# ---- Map 7 Canopy Cover Trends --- ####
+stand_allyr <- joinStandData(park=park, years=c(from:to), QAQC=QAQC, rejected=rejected, anrevisit=anrevisit) %>% 
+  select(Plot_Name, Cycle, Crown_Closure_Class, Crown_Closure_Pct) 
+
+cancov1 <- stand_allyr %>% mutate (CanopyCov = ifelse(is.na(Crown_Closure_Pct), Crown_Closure_Class, Crown_Closure_Pct)) %>%
+  select(Plot_Name, Cycle, CanopyCov)
+
+cancov_wide <- cancov1 %>% pivot_wider(names_from = Cycle, names_prefix = "Cycle", values_from = CanopyCov)
+
+cancov <- left_join(plotevs_4yr %>% select(Plot_Name, Plot_Number, X = X_Coord, Y = Y_Coord),
+                    cancov_wide, by = "Plot_Name") %>% 
+  select(Plot_Name, Plot_Number, X, Y, Cycle1, Cycle2, Cycle3, Cycle4)
+
+write_to_shp(cancov, shp_name = paste0(shppath, "Map_7_", park, "_canopy_cover.shp"))
+
+
+
+
+
+#### ---- Map 8 Invasive % Cover by Cycle ---- 
 invcov <- joinQuadData(speciesType = 'invasive', GrowthForm = 'all', 
                        park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
@@ -343,15 +364,22 @@ invcov_wider <- invcov %>% select(Plot_Name, Plot_Number, Cycle, X=X_Coord, Y=Y_
   pivot_wider(names_from = Cycle, names_prefix = "Cycle", values_from = ave.q.cov) 
 
 write_to_shp(invcov_wider, shp_name = 
-               paste0(shppath, "Map_7_", park, "_invas_cover_cycle_", cycle_latest, ".shp"))
+               paste0(shppath, "Map_8_", park, "_invas_cover_cycle_", cycle_latest, ".shp"))
 
-
-#---- Map 8 Invasive % Cover by Species ----
-# Lump some species in the same genus
+# ---- Map 9 Invasive % Cover by Species ----
+# Generate comprehensive species list for all invasive plants observed in ERMN
 invspp_allobs <- joinQuadSpData(speciesType = 'invasive', GrowthForm = 'all', 
-                             park = "all", years=c(2008:to), QAQC = QAQC, retired = retired, anrevisit = anrevisit)
+                             park = "all", years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
 
 invspp_all_unique <- invspp_allobs %>% select(Latin_name) %>% unique() %>% arrange(Latin_name)
+
+# Invasive plant data for PARK
+invspp_park <- joinQuadSpData(speciesType = 'invasive', GrowthForm = 'all', 
+                                park = park, years = years, QAQC = QAQC, retired = retired, anrevisit = anrevisit)
+
+park_invspp_list <- invspp_park %>%  select(Latin_name) %>% unique() %>% arrange(Latin_name)
+
+######################### THIS IS THE PLACE TO START!! ###################################################################
 
 # Lump some species in the same genus
 invspp_4yr <- joinQuadSpecies(from = from_4yr, to = to, speciesType = 'invasive') %>% 
@@ -519,13 +547,7 @@ write_to_shp(pests_wide, shp_name =
                paste0(new_path, "shapefiles/", park, "_pest_detections_", cycle_latest, ".shp"))
 
 
-#---- Map 10 Canopy Cover --- NOT YET NEEDS TO BE UPDATED FOR ERMN ----
-cancov <- do.call(joinStandData, args = args_all) %>% 
-  select(Plot_Name, cycle, X = xCoordinate, Y = yCoordinate, CrownClos = Pct_Crown_Closure)
 
-cancov_wide <- cancov %>% pivot_wider(names_from = cycle, values_from = CrownClos)
-
-write_to_shp(cancov_wide, shp_name = paste0(new_path, "shapefiles/", park, "_canopy_cover.shp"))
 
 #---- Table 2 Average Invasive cover by plot and cycle ----
 inv_plots <- do.call(sumSpeciesList, args = c(args_all, speciesType = "invasive")) %>% 
